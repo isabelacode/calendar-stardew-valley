@@ -1,13 +1,14 @@
-import { formatDate, toGameDate } from "../domain/calendar";
+import { toGameDate } from "../domain/calendar";
 import { allCrops, allFertilizers, eventsOn, getCrop, getFertilizer } from "../domain/catalog";
 import { daysToGrow } from "../domain/growth";
 import type { CostEvent, HarvestEvent } from "../domain/schedule";
-import { LOCATION_NAMES, canPlant, ignoresSeasons, lastAliveDay, producesRepeatedly, seedCost } from "../domain/schedule";
-import type { Planting } from "../domain/types";
+import { canPlant, ignoresSeasons, lastAliveDay, producesRepeatedly, seedCost } from "../domain/schedule";
+import type { FertilizerData, Planting } from "../domain/types";
+import { locale, t, tx } from "../i18n";
 import { addPlanting, deletePlanting, setView, toggleRemovedAfter, updatePlanting } from "../state/actions";
 import { store, type AppState } from "../state/store";
 import { h, icon, mount } from "./dom";
-import { gold, goldClass, img, isRange } from "./format";
+import { formatDate, gold, goldClass, img, isRange, locationName } from "./format";
 import { viewModel } from "./viewModel";
 
 interface FormState {
@@ -23,6 +24,7 @@ export class DayDialog {
 	private header = h("header", { class: "dialog_header" });
 	private formBox = h("section", { class: "panel plant_form" });
 	private lists = h("div", { class: "dialog_lists" });
+	private doneBtn = h("button", { type: "button", class: "btn btn_ok", onClick: () => this.close() });
 	private form: FormState = { cropId: "", amount: 1, fertilizerId: "none", replant: false };
 
 	constructor() {
@@ -31,7 +33,7 @@ export class DayDialog {
 			{ class: "day_dialog frame", "aria-labelledby": "day-dialog-title" },
 			this.header,
 			h("div", { class: "dialog_body" }, this.formBox, this.lists),
-			h("footer", { class: "dialog_footer" }, h("button", { type: "button", class: "btn btn_ok", onClick: () => this.close() }, icon("check"), "Pronto")),
+			h("footer", { class: "dialog_footer" }, this.doneBtn),
 		);
 		// Clique fora do quadro fecha
 		this.el.addEventListener("click", (e) => {
@@ -44,6 +46,11 @@ export class DayDialog {
 			if (e.key === "ArrowRight") this.go(1);
 		});
 		this.el.addEventListener("close", () => (this.day = -1));
+	}
+
+	/** Textos fixos do quadro; chamado quando o idioma muda */
+	relabel(): void {
+		mount(this.doneBtn, icon("check"), t().day.done);
 	}
 
 	get isOpen(): boolean {
@@ -79,9 +86,10 @@ export class DayDialog {
 	private render(state: AppState, rebuildForm: boolean): void {
 		const day = this.day;
 		const events = eventsOn(day);
+		const tr = t().day;
 		mount(
 			this.header,
-			h("button", { type: "button", class: "btn btn_icon", title: "Dia anterior (←)", "aria-label": "Dia anterior", props: { disabled: day === 0 }, onClick: () => this.go(-1) }, icon("chevron-left")),
+			h("button", { type: "button", class: "btn btn_icon", title: `${tr.prev} (←)`, "aria-label": tr.prev, props: { disabled: day === 0 }, onClick: () => this.go(-1) }, icon("chevron-left")),
 			h(
 				"div",
 				{ class: "dialog_title" },
@@ -90,12 +98,12 @@ export class DayDialog {
 					"p",
 					null,
 					h("img", { src: img.location(state.view.location), alt: "" }),
-					` ${LOCATION_NAMES[state.view.location]} · ${formatDate(day, { year: true }).split(", ").pop()}`,
-					events.map((e) => h("span", { class: "tag" }, e.kind === "festival" ? `🎉 ${e.name}` : `Aniversário de ${e.name}`)),
+					` ${locationName(state.view.location)} · ${t().date.year(toGameDate(day).year + 1)}`,
+					events.map((e) => h("span", { class: "tag" }, e.kind === "festival" ? `🎉 ${tx(e.name)}` : tr.birthdayOf(e.name))),
 				),
 			),
-			h("button", { type: "button", class: "btn btn_icon", title: "Próximo dia (→)", "aria-label": "Próximo dia", onClick: () => this.go(1) }, icon("chevron-right")),
-			h("button", { type: "button", class: "btn btn_icon btn_danger close_btn", title: "Fechar (Esc)", "aria-label": "Fechar", onClick: () => this.close() }, icon("close")),
+			h("button", { type: "button", class: "btn btn_icon", title: `${tr.next} (→)`, "aria-label": tr.next, onClick: () => this.go(1) }, icon("chevron-right")),
+			h("button", { type: "button", class: "btn btn_icon btn_danger close_btn", title: `${tr.close} (Esc)`, "aria-label": tr.close, onClick: () => this.close() }, icon("close")),
 		);
 		if (rebuildForm) this.renderForm(state);
 
@@ -110,23 +118,24 @@ export class DayDialog {
 	private renderForm(state: AppState): void {
 		const day = this.day;
 		const location = state.view.location;
+		const tr = t().day;
 		const crops = allCrops()
 			.filter((c) => canPlant(c, location, day))
-			.sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+			.sort((a, b) => tx(a.name).localeCompare(tx(b.name), locale()));
 
 		if (!crops.some((c) => c.id === this.form.cropId)) this.form.cropId = "";
 
 		if (!crops.length) {
-			mount(this.formBox, h("h3", null, "Plantar"), h("p", { class: "empty" }, "Nada pode ser plantado na fazenda nesta estação. Use a Estufa ou a Ilha Gengibre."));
+			mount(this.formBox, h("h3", null, tr.plant), h("p", { class: "empty" }, tr.nothingOnFarm));
 			return;
 		}
 
 		const preview = h("p", { class: "plant_preview", "aria-live": "polite" });
 		const cropSelect = h(
 			"select",
-			{ class: "input", "aria-label": "Cultura", onChange: () => update({ cropId: cropSelect.value }) },
-			h("option", { value: "" }, "Escolha uma semente…"),
-			crops.map((c) => h("option", { value: c.id, props: { selected: c.id === this.form.cropId } }, `${c.name}${c.seedPrice ? ` — ${gold(c.seedPrice)}` : ""}`)),
+			{ class: "input", "aria-label": tr.crop, onChange: () => update({ cropId: cropSelect.value }) },
+			h("option", { value: "" }, tr.chooseSeed),
+			crops.map((c) => h("option", { value: c.id, props: { selected: c.id === this.form.cropId } }, `${tx(c.name)}${c.seedPrice ? ` — ${gold(c.seedPrice)}` : ""}`)),
 		);
 		const amountInput = h("input", {
 			class: "input input_num",
@@ -134,18 +143,18 @@ export class DayDialog {
 			min: "1",
 			max: "99999",
 			inputmode: "numeric",
-			"aria-label": "Quantidade",
+			"aria-label": tr.amount,
 			props: { value: String(this.form.amount) },
 			onInput: () => update({ amount: Math.max(0, Math.floor(Number(amountInput.value))) }),
 		});
 		const fertSelect = h(
 			"select",
-			{ class: "input", "aria-label": "Fertilizante", onChange: () => update({ fertilizerId: fertSelect.value }) },
-			allFertilizers().map((f) => h("option", { value: f.id, props: { selected: f.id === this.form.fertilizerId } }, f.id === "none" ? "Sem fertilizante" : f.name)),
+			{ class: "input", "aria-label": tr.fertilizer, onChange: () => update({ fertilizerId: fertSelect.value }) },
+			allFertilizers().map((f) => h("option", { value: f.id, props: { selected: f.id === this.form.fertilizerId } }, fertilizerLabel(f))),
 		);
 		const replantBox = h("input", { type: "checkbox", props: { checked: this.form.replant }, onChange: () => update({ replant: replantBox.checked }) });
-		const replantLabel = h("label", { class: "check", title: "Replanta a mesma semente no dia de cada colheita, enquanto der tempo de colher de novo" }, replantBox, "Replantar sempre");
-		const submit = h("button", { type: "submit", class: "btn btn_ok" }, icon("plus"), "Plantar");
+		const replantLabel = h("label", { class: "check", title: tr.replantHint }, replantBox, tr.replantAlways);
+		const submit = h("button", { type: "submit", class: "btn btn_ok" }, icon("plus"), tr.plant);
 
 		const formEl = h(
 			"form",
@@ -179,15 +188,20 @@ export class DayDialog {
 			replantBox.checked = !replantBox.disabled && this.form.replant;
 			replantLabel.classList.toggle("disabled", replantBox.disabled);
 			submit.disabled = !crop || this.form.amount < 1;
-			mount(preview, crop ? previewText(crop.id, this.form, day, state) : "Escolha a semente, a quantidade e o fertilizante.");
+			mount(preview, crop ? previewText(crop.id, this.form, day, state) : tr.previewEmpty);
 		};
 
-		mount(this.formBox, h("h3", null, h("img", { src: img.seed(getCrop("parsnip")!), alt: "" }), "Plantar"), formEl, preview);
+		mount(this.formBox, h("h3", null, h("img", { src: img.seed(getCrop("parsnip")!), alt: "" }), tr.plant), formEl, preview);
 		sync();
 	}
 }
 
+function fertilizerLabel(f: FertilizerData): string {
+	return f.id === "none" ? t().day.noFertilizer : tx(f.name);
+}
+
 function previewText(cropId: string, form: FormState, day: number, state: AppState): Node[] {
+	const tr = t().day;
 	const crop = getCrop(cropId)!;
 	const fert = getFertilizer(form.fertilizerId);
 	const grow = daysToGrow(crop, fert, state.settings);
@@ -196,40 +210,42 @@ function previewText(cropId: string, form: FormState, day: number, state: AppSta
 	const alive = lastAliveDay(crop, draft);
 	const cost = seedCost(crop, Math.max(1, form.amount)) + (fert.price ?? 0) * Math.max(1, form.amount);
 
-	const parts: Node[] = [h("span", { class: "gold neg" }, `−${gold(cost)}`), document.createTextNode(` · cresce em ${grow} dias`)];
+	const parts: Node[] = [h("span", { class: "gold neg" }, `−${gold(cost)}`), document.createTextNode(tr.growsIn(grow))];
 	if (first > alive) {
-		parts.push(h("strong", { class: "warn" }, ` · não dá tempo de colher antes do fim da estação`));
+		parts.push(h("strong", { class: "warn" }, tr.noTime));
 		return parts;
 	}
-	parts.push(document.createTextNode(` · 1ª colheita em ${formatDate(first, { year: true })}`));
+	parts.push(document.createTextNode(tr.firstHarvest(formatDate(first, { year: true }))));
 	if (crop.regrow) {
-		parts.push(document.createTextNode(` · rebrota a cada ${crop.regrow} dias`));
-		parts.push(ignoresSeasons(state.view.location) ? h("strong", null, " · produz até você arrancar") : document.createTextNode(` até ${formatDate(alive)}`));
+		parts.push(document.createTextNode(tr.regrowsEvery(crop.regrow)));
+		parts.push(ignoresSeasons(state.view.location) ? h("strong", null, tr.untilRemoved) : document.createTextNode(tr.until(formatDate(alive))));
 	}
-	if (crop.seedPrice === null) parts.push(h("span", { class: "muted" }, " · semente não vendida em lojas"));
-	if (crop.note) parts.push(h("span", { class: "note" }, crop.note));
+	if (crop.seedPrice === null) parts.push(h("span", { class: "muted" }, tr.seedNotSold));
+	if (crop.note) parts.push(h("span", { class: "note" }, tx(crop.note)));
 	return parts;
 }
 
 function plantingStatus(planting: Planting): Node | null {
-	if (planting.removedAfter !== null) return h("span", { class: "tag tag_removed" }, `arrancada após ${formatDate(planting.removedAfter, { year: true })}`);
-	if (producesRepeatedly(planting) && ignoresSeasons(planting.location)) return h("span", { class: "tag tag_forever", title: "Sem estações: continua produzindo nos anos seguintes até você arrancar" }, "produz sempre");
+	if (planting.removedAfter !== null) return h("span", { class: "tag tag_removed" }, t().day.removedAfter(formatDate(planting.removedAfter, { year: true })));
+	if (producesRepeatedly(planting) && ignoresSeasons(planting.location)) return h("span", { class: "tag tag_forever", title: t().day.foreverHint }, t().day.forever);
 	return null;
 }
 
 function plantedSection(planted: CostEvent[], replanted: CostEvent[], state: AppState) {
-	if (!planted.length && !replanted.length) return h("p", { class: "empty" }, "Nada plantado neste dia.");
+	const tr = t().day;
+	if (!planted.length && !replanted.length) return h("p", { class: "empty" }, tr.nothingPlanted);
 
 	const row = (ev: CostEvent) => {
 		const p = ev.planting;
 		const crop = ev.crop;
+		const name = tx(crop.name);
 		const fert = getFertilizer(p.fertilizerId);
 		const grow = daysToGrow(crop, fert, state.settings);
 		const amount = h("input", {
 			class: "input input_num",
 			type: "number",
 			min: "1",
-			"aria-label": `Quantidade de ${crop.name}`,
+			"aria-label": tr.amountOf(name),
 			props: { value: String(p.amount) },
 			onChange: () => {
 				const n = Math.floor(Number(amount.value));
@@ -239,8 +255,8 @@ function plantedSection(planted: CostEvent[], replanted: CostEvent[], state: App
 		});
 		const fertSelect = h(
 			"select",
-			{ class: "input", "aria-label": `Fertilizante de ${crop.name}`, onChange: () => updatePlanting(p.id, { fertilizerId: fertSelect.value }) },
-			allFertilizers().map((f) => h("option", { value: f.id, props: { selected: f.id === p.fertilizerId } }, f.id === "none" ? "Sem fertilizante" : f.name)),
+			{ class: "input", "aria-label": tr.fertilizerOf(name), onChange: () => updatePlanting(p.id, { fertilizerId: fertSelect.value }) },
+			allFertilizers().map((f) => h("option", { value: f.id, props: { selected: f.id === p.fertilizerId } }, fertilizerLabel(f))),
 		);
 		return h(
 			"tr",
@@ -249,21 +265,21 @@ function plantedSection(planted: CostEvent[], replanted: CostEvent[], state: App
 			h(
 				"td",
 				{ class: "name" },
-				h("b", null, crop.name),
-				h("div", { class: "tags" }, p.replant && h("span", { class: "tag" }, "replanta sempre"), plantingStatus(p), fert.id !== "none" && h("img", { class: "fert_icon", src: img.fertilizer(fert.id), alt: fert.name, title: fert.name })),
+				h("b", null, name),
+				h("div", { class: "tags" }, p.replant && h("span", { class: "tag" }, tr.replantsTag), plantingStatus(p), fert.id !== "none" && h("img", { class: "fert_icon", src: img.fertilizer(fert.id), alt: tx(fert.name), title: tx(fert.name) })),
 			),
 			h("td", null, amount),
 			h("td", null, h("span", { class: "select" }, fertSelect)),
-			h("td", { class: "num" }, `${grow} d`),
+			h("td", { class: "num" }, t().daysShort(grow)),
 			h("td", { class: "num" }, h("span", { class: "gold neg" }, `−${gold(ev.amount)}`)),
-			h("td", { class: "actions" }, h("button", { type: "button", class: "btn btn_icon btn_danger", title: "Apagar esta plantação (e todas as colheitas dela)", "aria-label": `Apagar ${crop.name}`, onClick: () => deletePlanting(p.id) }, icon("trash"))),
+			h("td", { class: "actions" }, h("button", { type: "button", class: "btn btn_icon btn_danger", title: tr.deleteHint, "aria-label": tr.deleteOf(name), onClick: () => deletePlanting(p.id) }, icon("trash"))),
 		);
 	};
 
 	return h(
 		"section",
 		{ class: "panel" },
-		h("h3", null, h("img", { src: img.seed(getCrop("parsnip")!), alt: "" }), "Plantado neste dia"),
+		h("h3", null, h("img", { src: img.seed(getCrop("parsnip")!), alt: "" }), tr.plantedToday),
 		planted.length > 0 &&
 			h(
 				"div",
@@ -271,7 +287,7 @@ function plantedSection(planted: CostEvent[], replanted: CostEvent[], state: App
 				h(
 					"table",
 					{ class: "table" },
-					h("thead", null, h("tr", null, h("th", { colspan: "2" }, "Cultura"), h("th", null, "Qtd."), h("th", null, "Fertilizante"), h("th", { class: "num" }, "Cresce"), h("th", { class: "num" }, "Custo"), h("th", null, h("span", { class: "sr" }, "Ações")))),
+					h("thead", null, h("tr", null, h("th", { colspan: "2" }, tr.crop), h("th", null, tr.qty), h("th", null, tr.fertilizer), h("th", { class: "num" }, tr.grows), h("th", { class: "num" }, tr.cost), h("th", null, h("span", { class: "sr" }, tr.actions)))),
 					h("tbody", null, planted.map(row)),
 				),
 			),
@@ -284,7 +300,7 @@ function plantedSection(planted: CostEvent[], replanted: CostEvent[], state: App
 						"li",
 						null,
 						h("img", { src: img.seed(ev.crop), alt: "" }),
-						`Replantio automático: ${ev.planting.amount}× ${ev.crop.name} (plantado em ${formatDate(ev.planting.day)}) `,
+						tr.autoReplant(ev.planting.amount, tx(ev.crop.name), formatDate(ev.planting.day)),
 						h("span", { class: "gold neg" }, `−${gold(ev.amount)}`),
 					),
 				),
@@ -293,7 +309,8 @@ function plantedSection(planted: CostEvent[], replanted: CostEvent[], state: App
 }
 
 function harvestSection(harvests: HarvestEvent[], day: number) {
-	if (!harvests.length) return h("p", { class: "empty" }, "Nenhuma colheita neste dia.");
+	const tr = t().day;
+	if (!harvests.length) return h("p", { class: "empty" }, tr.noHarvest);
 
 	const row = (ev: HarvestEvent) => {
 		const p = ev.planting;
@@ -306,24 +323,24 @@ function harvestSection(harvests: HarvestEvent[], day: number) {
 			h(
 				"td",
 				{ class: "name" },
-				h("b", null, ev.crop.name),
+				h("b", null, tx(ev.crop.name)),
 				h(
 					"div",
 					{ class: "tags" },
-					ev.repeat && h("span", { class: "tag" }, ev.crop.regrow ? "rebrota" : "replantio"),
-					h("span", { class: "tag tag_soft" }, `plantada em ${formatDate(p.day, { year: true })}`),
-					isLast && h("span", { class: "tag tag_removed" }, "última colheita"),
+					ev.repeat && h("span", { class: "tag" }, ev.crop.regrow ? tr.regrowTag : tr.replantTag),
+					h("span", { class: "tag tag_soft" }, tr.plantedOn(formatDate(p.day, { year: true }))),
+					isLast && h("span", { class: "tag tag_removed" }, tr.lastHarvest),
 				),
 			),
-			h("td", { class: "num" }, `×${ev.items.min}`, isRange(ev.items) && h("small", null, ` até ×${ev.items.max}`)),
-			h("td", { class: "num" }, h("span", { class: goldClass(ev.revenue.min) }, gold(ev.revenue.min, true)), isRange(ev.revenue) && h("small", null, ` até ${gold(ev.revenue.max)}`)),
+			h("td", { class: "num" }, `×${ev.items.min}`, isRange(ev.items) && h("small", null, ` ${t().upTo(`×${ev.items.max}`)}`)),
+			h("td", { class: "num" }, h("span", { class: goldClass(ev.revenue.min) }, gold(ev.revenue.min, true)), isRange(ev.revenue) && h("small", null, ` ${t().upTo(gold(ev.revenue.max))}`)),
 			h(
 				"td",
 				{ class: "actions" },
 				canRemove &&
 					(isLast
-						? h("button", { type: "button", class: "btn btn_small", title: "Desfazer: a planta volta a produzir", onClick: () => toggleRemovedAfter(p.id, day) }, icon("reload"), "Desfazer")
-						: h("button", { type: "button", class: "btn btn_small btn_danger", title: "Arranca a planta depois desta colheita; as anteriores continuam valendo", onClick: () => toggleRemovedAfter(p.id, day) }, icon("trash"), "Arrancar depois")),
+						? h("button", { type: "button", class: "btn btn_small", title: tr.undoHint, onClick: () => toggleRemovedAfter(p.id, day) }, icon("reload"), tr.undo)
+						: h("button", { type: "button", class: "btn btn_small btn_danger", title: tr.removeHint, onClick: () => toggleRemovedAfter(p.id, day) }, icon("trash"), tr.removeAfter)),
 			),
 		);
 	};
@@ -331,14 +348,14 @@ function harvestSection(harvests: HarvestEvent[], day: number) {
 	return h(
 		"section",
 		{ class: "panel" },
-		h("h3", null, h("img", { src: img.ui("farming"), alt: "" }), "Colheita"),
+		h("h3", null, h("img", { src: img.ui("farming"), alt: "" }), tr.harvest),
 		h(
 			"div",
 			{ class: "table_wrap" },
 			h(
 				"table",
 				{ class: "table" },
-				h("thead", null, h("tr", null, h("th", { colspan: "2" }, "Cultura"), h("th", { class: "num" }, "Itens"), h("th", { class: "num" }, "Receita"), h("th", null, h("span", { class: "sr" }, "Ações")))),
+				h("thead", null, h("tr", null, h("th", { colspan: "2" }, tr.crop), h("th", { class: "num" }, tr.items), h("th", { class: "num" }, tr.revenue), h("th", null, h("span", { class: "sr" }, tr.actions)))),
 				h("tbody", null, harvests.map(row)),
 			),
 		),

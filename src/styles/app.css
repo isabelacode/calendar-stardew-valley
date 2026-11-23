@@ -31,6 +31,8 @@ body.drawer_open { overflow: hidden; }
 		0 7px 0 rgba(20, 8, 2, .5);
 }
 .masthead p { margin: 10px 0 0; color: var(--cream); text-shadow: 0 2px 0 rgba(20, 8, 2, .8); }
+.lang_switch { margin-left: auto; align-self: flex-start; }
+.lang_switch .chip { min-width: 44px; min-height: 32px; }
 
 .board { max-width: 1400px; margin: 0 auto 16px; padding: 16px 18px 12px; }
 

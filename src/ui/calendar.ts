@@ -1,11 +1,12 @@
-import { DAYS_PER_SEASON, SEASON_NAMES, SEASONS, WEEKDAYS, formatDate, toGameDate } from "../domain/calendar";
+import { DAYS_PER_SEASON, SEASONS, toGameDate } from "../domain/calendar";
 import { eventsOn } from "../domain/catalog";
 import type { DayEntry } from "../domain/ledger";
 import type { HarvestEvent } from "../domain/schedule";
 import type { CalendarEvent } from "../domain/types";
+import { t, tx } from "../i18n";
 import type { AppState } from "../state/store";
 import { h, mount } from "./dom";
-import { gold, goldClass, img, isRange } from "./format";
+import { formatDate, gold, goldClass, img, isRange, seasonName } from "./format";
 import type { ViewModel } from "./viewModel";
 
 const MAX_ICONS = 4;
@@ -40,8 +41,9 @@ function eventView(events: readonly CalendarEvent[]) {
 	if (!events.length) return null;
 	const first = events[0]!;
 	const src = first.kind === "festival" ? img.festival() : img.portrait(first.portrait);
-	const label = events.map((e) => (e.kind === "festival" ? e.name : `Aniversário: ${e.name}`)).join(" · ");
-	return h("div", { class: "event", title: label }, h("img", { src, alt: "" }), h("span", { class: "event_name" }, events.map((e) => e.name).join(", ")));
+	const name = (e: CalendarEvent) => (e.kind === "festival" ? tx(e.name) : e.name);
+	const label = events.map((e) => (e.kind === "festival" ? tx(e.name) : t().calendar.birthday(e.name))).join(" · ");
+	return h("div", { class: "event", title: label }, h("img", { src, alt: "" }), h("span", { class: "event_name" }, events.map(name).join(", ")));
 }
 
 function dayCell(abs: number, entry: DayEntry | undefined, state: AppState, onOpen: (day: number) => void) {
@@ -64,18 +66,18 @@ function dayCell(abs: number, entry: DayEntry | undefined, state: AppState, onOp
 			"div",
 			{ class: "day_top" },
 			h("span", { class: "day_num" }, day),
-			h("span", { class: "day_weekday" }, WEEKDAYS[(day - 1) % 7]),
+			h("span", { class: "day_weekday" }, t().weekdays[(day - 1) % 7]),
 			eventView(events),
 		),
-		iconRow(planted, "planting", "Plantio", (ev) => badge(img.seed(ev.crop), ev.planting.amount, `${ev.reason === "replant" ? "Replantar" : "Plantar"} ${ev.planting.amount}× ${ev.crop.name}`)),
-		iconRow(harvests, "harvesting", "Colheita", (g) => badge(img.crop(g.harvest.crop), g.items, `Colher ${g.items}× ${g.harvest.crop.name}`)),
+		iconRow(planted, "planting", t().calendar.planting, (ev) => badge(img.seed(ev.crop), ev.planting.amount, t().calendar.plantBadge(ev.reason === "replant", ev.planting.amount, tx(ev.crop.name)))),
+		iconRow(harvests, "harvesting", t().calendar.harvest, (g) => badge(img.crop(g.harvest.crop), g.items, t().calendar.harvestBadge(g.items, tx(g.harvest.crop.name)))),
 		entry &&
 			hasActivity &&
 			h(
 				"div",
 				{ class: "day_profit" },
 				h("span", { class: goldClass(entry.profit.min) }, gold(entry.profit.min, true)),
-				isRange(entry.profit) && h("small", null, `até ${gold(entry.profit.max, true)}`),
+				isRange(entry.profit) && h("small", null, t().upTo(gold(entry.profit.max, true))),
 			),
 	);
 }
@@ -88,8 +90,8 @@ export function renderCalendar(root: HTMLElement, state: AppState, vm: ViewModel
 	root.className = `calendar s_${seasonId}`;
 	mount(
 		root,
-		h("div", { class: "calendar_banner" }, h("h2", null, SEASON_NAMES[seasonId]), h("span", null, `Ano ${view.year + 1}`)),
-		h("div", { class: "weekdays", "aria-hidden": "true" }, WEEKDAYS.map((d) => h("span", null, d))),
+		h("div", { class: "calendar_banner" }, h("h2", null, seasonName(view.season)), h("span", null, t().year(view.year + 1))),
+		h("div", { class: "weekdays", "aria-hidden": "true" }, t().weekdays.map((d) => h("span", null, d))),
 		h("div", { class: "days" }, days.map((abs) => dayCell(abs, vm.ledger.days.get(abs), state, onOpen))),
 	);
 }

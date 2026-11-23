@@ -19,6 +19,8 @@ quanto ouro cada estação rende.
 - **Profissões**: Lavrador (+10% no preço) e Agricultor (+10% de velocidade)
 - **Tabela de culturas** com busca, filtro por estação e lucro por dia
 - **Backup**: exporta/importa JSON (também aceita arquivos do planejador antigo)
+- **Português e inglês**: seletor PT/EN no topo. O idioma inicial segue o do
+  navegador e a escolha fica salva
 - Atalhos: `←` `→` estação · `L` local · `C` culturas · `Esc` fecha
 
 ## Desenvolvimento
@@ -34,8 +36,9 @@ Vite + TypeScript, sem framework.
 
 ```
 src/
-  data/      dados do jogo (culturas, fertilizantes, eventos)
+  data/      dados do jogo (culturas, fertilizantes, eventos), com nomes em pt e en
   domain/    regras do jogo, sem DOM: crescimento, qualidade, colheitas, lucro
+  i18n/      textos da interface (pt.ts, en.ts) e idioma atual
   state/     estado da aplicação, persistência (localStorage) e ações
   ui/        interface: calendário, modal do dia, painel lateral
   styles/    tema (madeira/pergaminho/fonte pixel) e layout

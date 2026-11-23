@@ -4,12 +4,6 @@ import { daysToGrow } from "./growth";
 import { QUALITIES, expectedItemsPerPlant, qualityOdds, sellPrice } from "./quality";
 import type { CropData, Location, Planting, PlayerSettings, Range } from "./types";
 
-export const LOCATION_NAMES: Record<Location, string> = {
-	farm: "Fazenda",
-	greenhouse: "Estufa",
-	island: "Ilha Gengibre",
-};
-
 /** Estufa e Ilha Gengibre: sem estações, as plantas vivem até serem arrancadas */
 export function ignoresSeasons(location: Location): boolean {
 	return location !== "farm";

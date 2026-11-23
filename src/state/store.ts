@@ -1,5 +1,6 @@
 import { getCrop } from "../domain/catalog";
 import type { Location, Planting, PlayerSettings } from "../domain/types";
+import { detectLang, isLang, type Lang } from "../i18n";
 
 export interface ViewState {
 	year: number;
@@ -11,6 +12,7 @@ export interface AppState {
 	plantings: Planting[];
 	settings: PlayerSettings;
 	view: ViewState;
+	lang: Lang;
 }
 
 const STORAGE_KEY = "stardew-calendar:v1";
@@ -79,6 +81,7 @@ function loadState(): AppState {
 		plantings: [],
 		settings: { ...DEFAULT_SETTINGS },
 		view: { year: 0, season: 0, location: "farm" },
+		lang: detectLang(),
 	};
 	try {
 		const raw = localStorage.getItem(STORAGE_KEY);
@@ -94,6 +97,7 @@ function loadState(): AppState {
 			season: toInt(v.season, 0, 0, 3),
 			location: isLocation(v.location) ? v.location : "farm",
 		};
+		if (isLang(data.lang)) state.lang = data.lang;
 	} catch {
 		// Armazenamento indisponível ou corrompido: começa vazio
 	}
@@ -123,15 +127,22 @@ class Store {
 
 	private scheduleSave(): void {
 		window.clearTimeout(this.saveTimer);
-		this.saveTimer = window.setTimeout(() => {
-			try {
-				const { plantings, settings, view } = this.state;
-				localStorage.setItem(STORAGE_KEY, JSON.stringify({ plantings, settings, view }));
-			} catch {
-				// Sem armazenamento (aba privada etc.): segue só em memória
-			}
-		}, 150);
+		this.saveTimer = window.setTimeout(() => this.flush(), 150);
+	}
+
+	/** Salva já o que estiver pendente (também ao fechar/recarregar a página) */
+	flush(): void {
+		if (this.saveTimer === undefined) return;
+		window.clearTimeout(this.saveTimer);
+		this.saveTimer = undefined;
+		try {
+			const { plantings, settings, view, lang } = this.state;
+			localStorage.setItem(STORAGE_KEY, JSON.stringify({ plantings, settings, view, lang }));
+		} catch {
+			// Sem armazenamento (aba privada etc.): segue só em memória
+		}
 	}
 }
 
 export const store = new Store();
+window.addEventListener("pagehide", () => store.flush());

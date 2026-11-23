@@ -2,6 +2,7 @@ import { DAYS_PER_YEAR } from "../domain/calendar";
 import { getCrop, getFertilizer } from "../domain/catalog";
 import { canPlant } from "../domain/schedule";
 import type { Location, Planting, PlayerSettings } from "../domain/types";
+import type { Lang } from "../i18n";
 import { newId, sanitizePlanting, sanitizeSettings, store, type ViewState } from "./store";
 
 export interface NewPlanting {
@@ -71,6 +72,10 @@ export function stepSeason(delta: 1 | -1): void {
 	const index = year * 4 + season + delta;
 	if (index < 0) return;
 	setView({ year: Math.floor(index / 4), season: index % 4 });
+}
+
+export function setLang(lang: Lang): void {
+	store.update(() => ({ lang }));
 }
 
 export function setSettings(patch: Partial<PlayerSettings>): void {

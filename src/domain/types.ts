@@ -1,3 +1,9 @@
+/** Texto nos dois idiomas da interface */
+export interface Text {
+	pt: string;
+	en: string;
+}
+
 export type SeasonId = "spring" | "summer" | "fall" | "winter";
 
 /** Onde a plantação está. Estufa e Ilha Gengibre ignoram as estações. */
@@ -5,8 +11,7 @@ export type Location = "farm" | "greenhouse" | "island";
 
 export interface CropData {
 	id: string;
-	name: string;
-	nameEn: string;
+	name: Text;
 	/** Estações em que cresce ao ar livre (vazio = só em ambiente fechado) */
 	seasons: SeasonId[];
 	/** Dias de cada estágio de crescimento */
@@ -26,22 +31,22 @@ export interface CropData {
 	/** Arrozal: cresce 25% mais rápido se irrigado */
 	paddy?: true;
 	trellis?: true;
-	note?: string;
+	note?: Text;
 }
 
 export interface FertilizerData {
 	id: string;
-	name: string;
+	name: Text;
 	price: number | null;
 	/** Nível de qualidade: 0 nenhum, 1 básico, 2 qualidade, 3 premium */
 	quality: number;
 	/** Fração de redução no tempo de crescimento */
 	speed: number;
-	note?: string;
+	note?: Text;
 }
 
 export type CalendarEvent =
-	| { day: number; name: string; kind: "festival" }
+	| { day: number; name: Text; kind: "festival" }
 	| { day: number; name: string; kind: "birthday"; portrait: string };
 
 /**

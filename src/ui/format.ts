@@ -1,5 +1,6 @@
-import { SEASONS } from "../domain/calendar";
+import { SEASONS, toGameDate, weekdayIndex } from "../domain/calendar";
 import type { CropData, Location, Range } from "../domain/types";
+import { lang, locale, t } from "../i18n";
 
 const BASE = import.meta.env.BASE_URL;
 
@@ -15,15 +16,22 @@ export const img = {
 	logo: () => `${BASE}images/logo.png`,
 };
 
-const numberFormat = new Intl.NumberFormat("pt-BR");
+const numberFormats = new Map<string, Intl.NumberFormat>();
 
-export function num(n: number): string {
-	return numberFormat.format(Math.round(n));
+function numberFormat(): Intl.NumberFormat {
+	const loc = locale();
+	let format = numberFormats.get(loc);
+	if (!format) numberFormats.set(loc, (format = new Intl.NumberFormat(loc)));
+	return format;
 }
 
-/** 1234 → "1.234g"; com sinal → "+1.234g" / "−1.234g" */
+export function num(n: number): string {
+	return numberFormat().format(Math.round(n));
+}
+
+/** 1234 → "1.234g" (pt) / "1,234g" (en); com sinal → "+1.234g" / "−1.234g" */
 export function gold(n: number, signed = false): string {
-	const text = `${numberFormat.format(Math.abs(Math.round(n)))}g`;
+	const text = `${numberFormat().format(Math.abs(Math.round(n)))}g`;
 	if (n < 0) return `−${text}`;
 	return signed && n > 0 ? `+${text}` : text;
 }
@@ -37,9 +45,27 @@ export function isRange(r: Range): boolean {
 }
 
 export function wikiUrl(crop: CropData): string {
-	return `https://pt.stardewvalleywiki.com/${encodeURIComponent(crop.name.replace(/ /g, "_"))}`;
+	const host = lang() === "pt" ? "pt.stardewvalleywiki.com" : "stardewvalleywiki.com";
+	return `https://${host}/${encodeURIComponent(crop.name[lang()].replace(/ /g, "_"))}`;
 }
 
 export function percent(p: number): string {
 	return `${Math.round(p * 100)}%`;
+}
+
+export function seasonName(index: number): string {
+	return t().seasons[SEASONS[index]!];
+}
+
+export function locationName(loc: Location): string {
+	return t().locations[loc];
+}
+
+/** "3 de Primavera" / "Spring 3", com dia da semana e ano opcionais */
+export function formatDate(abs: number, opts: { year?: boolean; weekday?: boolean } = {}): string {
+	const d = toGameDate(abs);
+	let text = t().date.day(d.day, seasonName(d.season));
+	if (opts.weekday) text = `${t().weekdaysLong[weekdayIndex(abs)]}, ${text}`;
+	if (opts.year) text += `, ${t().date.year(d.year + 1)}`;
+	return text;
 }
